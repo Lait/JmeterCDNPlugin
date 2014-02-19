@@ -38,9 +38,11 @@ class WorkerThread extends Thread {
 
 public class CDNPushServer extends Thread {
 	private int port;
+	private CDNCache<String, CacheEntry> cache;
 	
-	private CDNPushServer() {
+	public CDNPushServer(CDNCache<String, CacheEntry> cache) {
 		this.port = 10086;
+		this.cache = cache;
 	}
 	
 	@Override

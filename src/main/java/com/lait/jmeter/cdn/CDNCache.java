@@ -1,7 +1,6 @@
 package com.lait.jmeter.cdn;
 
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -11,7 +10,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class CacheImpl<K, V> implements Cache<K, V> {
+public class CDNCache<K, V> implements Cache<K, V> {
 
     private final String name;
     private final HashMap<K, V> cache;
@@ -19,12 +18,12 @@ public class CacheImpl<K, V> implements Cache<K, V> {
     private final Lock readLock = lock.readLock();
     private final Lock writeLock = lock.writeLock();
     
-    public CacheImpl(String name) {
+    public CDNCache(String name) {
         this.name = name;
         cache = new HashMap<K, V>();
     }
     
-    public CacheImpl(String name, int initialCapacity) {
+    public CDNCache(String name, int initialCapacity) {
         this.name = name;
         cache = new HashMap<K, V>(initialCapacity);
     }

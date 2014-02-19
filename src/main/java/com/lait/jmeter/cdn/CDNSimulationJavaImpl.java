@@ -55,7 +55,7 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
 
         private volatile HttpURLConnection savedConn;
         
-        private static final CDNCacheManager cdnCacheManager = CDNCacheManager.getInstance();
+        private static final CDN cdn = CDN.getInstance();
 
         protected CDNSimulationJavaImpl(HTTPSamplerBase base) {
             super(base);
@@ -466,9 +466,9 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
                 String requestUrl          = this.testElement.URL;
                 byte[] responseData;
                 //获取有关参数
-                boolean isCached = cdnCacheManager.isCached(requestUrl);
+                boolean isCached = cdn.isCached(requestUrl);
                 if (isCached) {
-                	responseData = cdnCacheManager.get(requestUrl).getBytes();
+                	responseData = cdn.get(requestUrl).getBytes();
                 } else {
                     if (method.equals(HTTPConstants.POST)) {
                         String postBody = sendPostData(conn);
@@ -557,7 +557,7 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
                 final String responseCode = res.getResponseCode();
                 if ("200".compareTo(responseCode) <= 0 && "299".compareTo(responseCode) >= 0) {
                 	//如果可以被Cache，即返回值在不在(200, 299)范围内时
-                	cdnCacheManager.saveDetails(conn, res);
+                	cdn.saveDetails(conn, res);
                 }
                 /***********************************************************/
                 

@@ -9,27 +9,33 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.protocol.http.sampler.HTTPSampleResult;
 import org.apache.jmeter.protocol.http.util.HTTPConstants;
 
-public class CDNCacheManager {
-	CacheImpl<String, CacheEntry> cache;
+public class CDN {
+	CDNCache<String, CacheEntry> cache;
 
 	private static final long ONE_YEAR_MS = 365*24*60*60*1000L;
 	
-	private static final CDNCacheManager instance = new CDNCacheManager();
+	private static final CDN instance = new CDN();
+	private CDNPushServer server;
 	
-	public static final CDNCacheManager getInstance() {
+	public static final CDN getInstance() {
 		return instance;
 	}
 	
-	private CDNCacheManager() {
-		this.cache = new CacheImpl<String, CacheEntry>("CDN-Cache in memory", 2048);
+	private CDN() {
+		this.cache = new CDNCache<String, CacheEntry>("CDN-Cache in memory", 2048);
+		this.server = new CDNPushServer(cache);
 	}
 	
+	//这里采用懒惰更新策略，在取值得时候才对数据可用性进行验证，删除过期数据或直接回源
 	public String get(String url) {
 		CacheEntry entry = this.cache.get(url);
-		if (entry == null) return null;
+		
+		//如果记录不存在或设置了no-cache则直接返回
+		if (entry == null || entry.isNoCache()) return null;
 		
 		Date curr = new Date();
-		if (curr.compareTo(entry.getExpires()) > 0) {
+		
+		if (entry.getExpires() == null || curr.compareTo(entry.getExpires()) > 0) {
 			this.cache.remove(url);
 			return null;
 		} else {
@@ -40,38 +46,34 @@ public class CDNCacheManager {
 	public void set(String response, String lastModified, String cacheControl, 
 			String expires, String etag, String url, String date) 
 	{
-        Date expiresDate = null; // i.e. not using Expires
+        Date expiresDate = null;
+        boolean noCache = false;
         final String MAX_AGE = "max-age=";
         
-        if(cacheControl != null && cacheControl.contains("no-store")) {
-            // We must not store an CacheEntry, otherwise a 
-            // conditional request may be made
+        if( cacheControl != null && //如果包含no-store 或  private则不在cdn缓存
+            (cacheControl.contains("no-store") || cacheControl.contains("private"))) 
+        {
             return;
         }
-        if (expires != null) {
-            try {
-                expiresDate = DateUtil.parseDate(expires);
-            } catch (DateParseException e) {
-                expiresDate = new Date(0L);; // invalid dates must be treated as expired
-            }
-        }
-        // if no-cache is present, ensure that expiresDate remains null, which forces revalidation
+                
+        // 如果no-cache没有设置则进行后续处理，否则直接跳过，让expireDate保持null
         if(cacheControl != null && !cacheControl.contains("no-cache")) {    
-            // the max-age directive overrides the Expires header,
-            if(cacheControl.contains(MAX_AGE)) {
+        	noCache = true;
+            
+            if(cacheControl.contains(MAX_AGE)) {// max-age优先级最高，会覆盖expire的设置
+            	//获取max age的值
                 long maxAgeInSecs = Long.parseLong(
+                		//使用", "对余下的字符串进行分割，所得的第一个片段即为数值
                         cacheControl.substring(cacheControl.indexOf(MAX_AGE)+MAX_AGE.length())
                             .split("[, ]")[0] // Bug 51932 - allow for optional trailing attributes
                         );
                 expiresDate=new Date(System.currentTimeMillis()+maxAgeInSecs*1000);
-
-            } else if(expires==null) { // No max-age && No expires
+                
+            } else if(expires==null) { // max-age和expire都没有设置的情况
                 if(!StringUtils.isEmpty(lastModified) && !StringUtils.isEmpty(date)) {
                     try {
                         Date responseDate = DateUtil.parseDate( date );
                         Date lastModifiedAsDate = DateUtil.parseDate( lastModified );
-                        // see https://developer.mozilla.org/en/HTTP_Caching_FAQ
-                        // see http://www.ietf.org/rfc/rfc2616.txt#13.2.4 
                         expiresDate=new Date(System.currentTimeMillis()
                                 +Math.round((responseDate.getTime()-lastModifiedAsDate.getTime())*0.1));
                     } catch(DateParseException e) {
@@ -82,10 +84,16 @@ public class CDNCacheManager {
                     // TODO Can't see anything in SPEC
                     expiresDate = new Date(System.currentTimeMillis()+ONE_YEAR_MS);                      
                 }
-            }  
-            // else expiresDate computed in (expires!=null) condition is used
+            } else {
+                try {
+                    expiresDate = DateUtil.parseDate(expires);
+                } catch (DateParseException e) {
+                	//如果expire不合法，则把时间设置为January 1, 1970, 00:00:00 GMT.
+                    expiresDate = new Date(0L); 
+                }
+            } 
         }
-		this.cache.put(url, new CacheEntry(response, lastModified, expiresDate, etag));
+		this.cache.put(url, new CacheEntry(response, lastModified, expiresDate, etag, noCache, cacheControl));
 	}
 
 	public boolean isCached(String url) {
@@ -103,9 +111,9 @@ public class CDNCacheManager {
             String date = conn.getHeaderField(HTTPConstants.DATE);
             set(res.getResponseDataAsString(), lastModified, cacheControl, expires, etag, url, date);
         }
-		
 	}
 
+	//如果返回值在(200, 299)之间则不可缓存，反之则可以
 	private boolean isCacheable(HTTPSampleResult res) {
         final String responseCode = res.getResponseCode();
         return "200".compareTo(responseCode) <= 0  // $NON-NLS-1$
