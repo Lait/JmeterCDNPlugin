@@ -55,10 +55,11 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
 
         private volatile HttpURLConnection savedConn;
         
-        private static final CDN cdn = CDN.getInstance();
+        private CDN cdn;
 
         protected CDNSimulationJavaImpl(HTTPSamplerBase base) {
             super(base);
+            this.cdn = CDN.getInstance();
         }
 
         /**
@@ -462,8 +463,8 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
                 /************************************************************/
                 /* LAIT:在发送前检查报文的Cache相关的设置，进行相应的操作           */
                 /************************************************************/
-                String requestCacheControl = this.testElement.CACHE_CONTROL;
-                String requestUrl          = this.testElement.URL;
+                String requestCacheControl = HTTPSamplerBase.CACHE_CONTROL;
+                String requestUrl          = HTTPSamplerBase.URL;
                 byte[] responseData;
                 //获取有关参数
                 boolean isCached = cdn.isCached(requestUrl);
@@ -557,7 +558,7 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
                 final String responseCode = res.getResponseCode();
                 if ("200".compareTo(responseCode) <= 0 && "299".compareTo(responseCode) >= 0) {
                 	//如果可以被Cache，即返回值在不在(200, 299)范围内时
-                	cdn.saveDetails(conn, res);
+                	cdn.set(conn, res);
                 }
                 /***********************************************************/
                 

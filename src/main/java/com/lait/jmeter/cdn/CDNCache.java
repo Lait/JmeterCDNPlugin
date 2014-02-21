@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -175,5 +176,15 @@ public class CDNCache<K, V> implements Cache<K, V> {
             readLock.unlock();
         }
     }
+
+	public void printAll() {
+		// TODO Auto-generated method stub
+		 Iterator<Entry<K, V>> it = cache.entrySet().iterator();
+		 while(it.hasNext()) {
+			 Entry<K, V> e = it.next();
+			 System.out.println(e.getKey());
+			 System.out.println(((CacheEntry)e.getValue()).getResponse());
+		 }
+	}
 
 }
