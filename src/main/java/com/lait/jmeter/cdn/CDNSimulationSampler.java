@@ -1,6 +1,5 @@
 package com.lait.jmeter.cdn;
 
-import org.apache.jmeter.protocol.http.sampler.HTTPJavaImpl;
 import org.apache.jmeter.protocol.http.sampler.HTTPSampleResult;
 import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
 import org.apache.jmeter.samplers.Interruptible;

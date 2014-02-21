@@ -464,13 +464,22 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
                 /* LAIT:在发送前检查报文的Cache相关的设置，进行相应的操作           */
                 /************************************************************/
                 String requestCacheControl = HTTPSamplerBase.CACHE_CONTROL;
-                String requestUrl          = HTTPSamplerBase.URL;
+                
+                String requestUrl          = "http://" + url.getHost();
+                if (url.getPort() > 0 && url.getPort() != url.getDefaultPort()) {
+                	requestUrl = requestUrl + ":" + url.getPort();
+                }
+                requestUrl = requestUrl + url.getPath();
+                
                 byte[] responseData;
                 //获取有关参数
                 boolean isCached = cdn.isCached(requestUrl);
+                
                 if (isCached) {
+                	System.out.println("Record of key:" + requestUrl + " is cached in cdn. So use it");
                 	responseData = cdn.get(requestUrl).getBytes();
                 } else {
+                	System.out.println("Record of key:" + requestUrl + " is not cached in cdn.");
                     if (method.equals(HTTPConstants.POST)) {
                         String postBody = sendPostData(conn);
                         res.setQueryString(postBody);

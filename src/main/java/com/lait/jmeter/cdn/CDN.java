@@ -18,24 +18,28 @@ public class CDN {
 
 	private CDNPushServer server;
 	
-	//ÎªÁËÈ·±£±»ËùÓĞÏß³Ì¹²Ïí£¬cdn±ØĞëÔÚÄÚ´æÖĞÖ»ÓĞÒ»·İ£¬ËùÒÔÊ¹ÓÃµ¥ÀıÄ£Ê½
+	//Îªï¿½ï¿½È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß³Ì¹ï¿½ï¿½?cdnï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú´ï¿½ï¿½ï¿½Ö»ï¿½ï¿½Ò»ï¿½İ£ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ãµï¿½ï¿½ï¿½Ä£Ê½
 	private static final CDN instance = new CDN();
+	private TestPageLoader loader;
 	
 	public static CDN getInstance() {
 		return instance;
 	}
 	
 	private CDN() {
-		this.cache = new CDNCache<String, CacheEntry>("CDN-Cache in memory", 2048);
+		this.cache  = new CDNCache<String, CacheEntry>("CDN-Cache in memory", 2048);
 		this.server = new CDNPushServer(this);
-		new TestPageLoader(this).load();
+		this.loader = new TestPageLoader(this);
+		
+		//æµ‹è¯•ç”¨
+		String[] urls = {"/"};
+		this.loader.setHost("www.baidu.com", 80, urls);
+		this.loader.load();
 	}
 	
-	//ÕâÀï²ÉÓÃÀÁ¶è¸üĞÂ²ßÂÔ£¬ÔÚÈ¡ÖµµÃÊ±ºò²Å¶ÔÊı¾İ¿ÉÓÃĞÔ½øĞĞÑéÖ¤£¬É¾³ı¹ıÆÚÊı¾İ»òÖ±½Ó»ØÔ´
 	public String get(String url) {
 		CacheEntry entry = this.cache.get(url);
 		
-		//Èç¹û¼ÇÂ¼²»´æÔÚ»òÉèÖÃÁËno-cacheÔòÖ±½Ó·µ»Ø
 		if (entry == null || entry.isNoCache()) {
 			System.out.println("Entry of key=" + url + "does not exist.");
 			return null;
@@ -60,26 +64,26 @@ public class CDN {
         boolean noCache = false;
         final String MAX_AGE = "max-age=";
         
-        if( cacheControl != null && //Èç¹û°üº¬no-store »ò  privateÔò²»ÔÚcdn»º´æ
+        if( cacheControl != null && //ï¿½ï¿½ï¿½ï¿½no-store ï¿½ï¿½  privateï¿½ï¿½ï¿½ï¿½cdnï¿½ï¿½ï¿½ï¿½
             (cacheControl.contains("no-store") || cacheControl.contains("private"))) 
         {
             return;
         }
                 
-        // Èç¹ûno-cacheÃ»ÓĞÉèÖÃÔò½øĞĞºóĞø´¦Àí£¬·ñÔòÖ±½ÓÌø¹ı£¬ÈÃexpireDate±£³Önull
+        // ï¿½ï¿½ï¿½no-cacheÃ»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ğºï¿½ï¿½ï¿½ï¿½?ï¿½ï¿½ï¿½ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½expireDateï¿½ï¿½ï¿½ï¿½null
         if(cacheControl != null && !cacheControl.contains("no-cache")) {    
         	noCache = true;
             
-            if(cacheControl.contains(MAX_AGE)) {// max-ageÓÅÏÈ¼¶×î¸ß£¬»á¸²¸ÇexpireµÄÉèÖÃ
-            	//»ñÈ¡max ageµÄÖµ
+            if(cacheControl.contains(MAX_AGE)) {// max-ageï¿½ï¿½ï¿½È¼ï¿½ï¿½ï¿½ß£ï¿½ï¿½á¸²ï¿½ï¿½expireï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+            	//ï¿½ï¿½È¡max ageï¿½ï¿½Öµ
                 long maxAgeInSecs = Long.parseLong(
-                		//Ê¹ÓÃ", "¶ÔÓàÏÂµÄ×Ö·û´®½øĞĞ·Ö¸î£¬ËùµÃµÄµÚÒ»¸öÆ¬¶Î¼´ÎªÊıÖµ
+                		//Ê¹ï¿½ï¿½", "ï¿½ï¿½ï¿½ï¿½ï¿½Âµï¿½ï¿½Ö·ï¿½ï¿½ï¿½Ğ·Ö¸î£¬ï¿½ï¿½ÃµÄµï¿½Ò»ï¿½ï¿½Æ¬ï¿½Î¼ï¿½Îªï¿½ï¿½Öµ
                         cacheControl.substring(cacheControl.indexOf(MAX_AGE)+MAX_AGE.length())
                             .split("[, ]")[0] // Bug 51932 - allow for optional trailing attributes
                         );
                 expiresDate=new Date(System.currentTimeMillis()+maxAgeInSecs*1000);
                 
-            } else if(expires==null) { // max-ageºÍexpire¶¼Ã»ÓĞÉèÖÃµÄÇé¿ö
+            } else if(expires==null) { // max-ageï¿½ï¿½expireï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½Ãµï¿½ï¿½ï¿½ï¿½
                 if(!StringUtils.isEmpty(lastModified) && !StringUtils.isEmpty(date)) {
                     try {
                         Date responseDate = DateUtil.parseDate( date );
@@ -98,7 +102,7 @@ public class CDN {
                 try {
                     expiresDate = DateUtil.parseDate(expires);
                 } catch (DateParseException e) {
-                	//Èç¹ûexpire²»ºÏ·¨£¬Ôò°ÑÊ±¼äÉèÖÃÎªJanuary 1, 1970, 00:00:00 GMT.
+                	//ï¿½ï¿½ï¿½expireï¿½ï¿½ï¿½Ï·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÎªJanuary 1, 1970, 00:00:00 GMT.
                     expiresDate = new Date(0L); 
                 }
             } 
@@ -123,7 +127,7 @@ public class CDN {
         }
 	}
 
-	//Èç¹û·µ»ØÖµÔÚ(200, 299)Ö®¼äÔò²»¿É»º´æ£¬·´Ö®Ôò¿ÉÒÔ
+	//ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½(200, 299)Ö®ï¿½ï¿½ï¿½ò²»¿É»ï¿½ï¿½æ£¬ï¿½ï¿½Ö®ï¿½ï¿½ï¿½ï¿½ï¿½
 	private boolean isCacheable(HTTPSampleResult res) {
         final String responseCode = res.getResponseCode();
         return "200".compareTo(responseCode) <= 0  // $NON-NLS-1$
