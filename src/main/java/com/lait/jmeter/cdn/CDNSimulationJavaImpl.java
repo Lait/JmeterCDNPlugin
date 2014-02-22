@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.net.BindException;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.Proxy;
 import java.net.URL;
 import java.net.URLConnection;
@@ -56,10 +57,36 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
         private volatile HttpURLConnection savedConn;
         
         private CDN cdn;
+        
+        protected void load() {
+    		String[] paths = {"/"};
+    		String   host  = "www.baidu.com";
+    		int      port  = 80;
+    		String surl;
+    		for (String path : paths) {
+    			surl = "http://" + host;
+    			if (port != 80) {
+    				surl = surl + ":" + port;
+    			}
+    			surl = surl + path;
+    			this.loadPage(surl);
+    		}
+        }
+        
+        protected void loadPage(String surl) {
+        	URL url = null;
+			try {
+				url = new URL(surl);
+			} catch (MalformedURLException e) {
+				e.printStackTrace();
+			}
+        	this.sample(url, "GET", false, 0);
+        }
 
         protected CDNSimulationJavaImpl(HTTPSamplerBase base) {
             super(base);
             this.cdn = CDN.getInstance();
+            this.load();
         }
 
         /**
@@ -401,8 +428,13 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
 
         @Override
         protected HTTPSampleResult sample(URL url, String method, boolean areFollowingRedirect, int frameDepth) {
-            HttpURLConnection conn = null;
-
+        	/*
+        	System.out.println("-" + url + "-");
+        	System.out.println("-" + method + "-");
+        	System.out.println("-" + areFollowingRedirect + "-");
+        	System.out.println("-" + frameDepth + "-");
+        	*/
+        	
             String urlStr = url.toString();
             log.debug("Start : sample " + urlStr);
 
@@ -425,61 +457,70 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
                    return res;
                }
             }
-
+            
+            HttpURLConnection conn = null;
             try {
-                // Sampling proper - establish the connection and read the response:
-                // Repeatedly try to connect:
-                int retry;
-                // Start with 0 so tries at least once, and retries at most MAX_CONN_RETRIES times
-                for (retry = 0; retry <= MAX_CONN_RETRIES; retry++) {
-                    try {
-                        conn = setupConnection(url, method, res);
-                        // Attempt the connection:
-                        savedConn = conn;
-                        conn.connect();
-                        break;
-                    } catch (BindException e) {
-                        if (retry >= MAX_CONN_RETRIES) {
-                            log.error("Can't connect after "+retry+" retries, "+e);
-                            throw e;
-                        }
-                        log.debug("Bind exception, try again");
-                        if (conn!=null) {
-                            savedConn = null; // we don't want interrupt to try disconnection again
-                            conn.disconnect();
-                        }
-                        setUseKeepAlive(false);
-                        continue; // try again
-                    } catch (IOException e) {
-                        log.debug("Connection failed, giving up");
-                        throw e;
-                    }
-                }
-                if (retry > MAX_CONN_RETRIES) {
-                    // This should never happen, but...
-                    throw new BindException();
-                }
-           
                 /************************************************************/
                 /* LAIT:在发送前检查报文的Cache相关的设置，进行相应的操作           */
                 /************************************************************/
-                String requestCacheControl = HTTPSamplerBase.CACHE_CONTROL;
+            	//String  requestCacheControl = HTTPSamplerBase.CACHE_CONTROL;
                 
-                String requestUrl          = "http://" + url.getHost();
+                String requestUrl = "http://" + url.getHost();
                 if (url.getPort() > 0 && url.getPort() != url.getDefaultPort()) {
                 	requestUrl = requestUrl + ":" + url.getPort();
                 }
                 requestUrl = requestUrl + url.getPath();
                 
                 byte[] responseData;
-                //获取有关参数
-                boolean isCached = cdn.isCached(requestUrl);
                 
-                if (isCached) {
+                if (cdn.isCached(requestUrl)) {
                 	System.out.println("Record of key:" + requestUrl + " is cached in cdn. So use it");
-                	responseData = cdn.get(requestUrl).getBytes();
+                	HTTPSampleResult temp = cdn.get(requestUrl);
+                	res.sampleEnd();
+                	res.setResponseCode(temp.getResponseCode());
+                	res.setSuccessful(true);
+                	res.setResponseMessage(temp.getResponseMessage());
+                	res.setContentType(temp.getContentType());
+                    res.setEncodingAndType(temp.getDataEncodingWithDefault());
+                    if (res.isRedirect()) {
+                    	res.setRedirectLocation(temp.getRedirectLocation());
+                    }
+                    res.setHeadersSize(temp.getHeadersSize());
+                    res.setURL(temp.getURL());
                 } else {
                 	System.out.println("Record of key:" + requestUrl + " is not cached in cdn.");
+                    // Sampling proper - establish the connection and read the response:
+                    // Repeatedly try to connect:
+                    int retry;
+                    // Start with 0 so tries at least once, and retries at most MAX_CONN_RETRIES times
+                    for (retry = 0; retry <= MAX_CONN_RETRIES; retry++) {
+                        try {
+                            conn = setupConnection(url, method, res);
+                            // Attempt the connection:
+                            savedConn = conn;
+                            conn.connect();
+                            break;
+                        } catch (BindException e) {
+                            if (retry >= MAX_CONN_RETRIES) {
+                                log.error("Can't connect after "+retry+" retries, "+e);
+                                throw e;
+                            }
+                            log.debug("Bind exception, try again");
+                            if (conn!=null) {
+                                savedConn = null; // we don't want interrupt to try disconnection again
+                                conn.disconnect();
+                            }
+                            setUseKeepAlive(false);
+                            continue; // try again
+                        } catch (IOException e) {
+                            log.debug("Connection failed, giving up");
+                            throw e;
+                        }
+                    }
+                    if (retry > MAX_CONN_RETRIES) {
+                        // This should never happen, but...
+                        throw new BindException();
+                    }
                     if (method.equals(HTTPConstants.POST)) {
                         String postBody = sendPostData(conn);
                         res.setQueryString(postBody);
@@ -489,92 +530,83 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
                         res.setQueryString(putBody);
                     }
                     responseData = readResponse(conn, res);
-                } 
-                /***********************************************************/
+                    res.sampleEnd();
+                    
+                    //成功从源服务器获取数据，现在开始填充数据到res中
+                    res.setResponseData(responseData);
 
-
-                res.sampleEnd();
-                // Done with the sampling proper.
-
-                // Now collect the results into the HTTPSampleResult:
-
-                res.setResponseData(responseData);
-
-                @SuppressWarnings("null") // Cannot be null here
-                int errorLevel = conn.getResponseCode();
-                String respMsg = conn.getResponseMessage();
-                String hdr=conn.getHeaderField(0);
-                if (hdr == null) {
-                    hdr="(null)";  // $NON-NLS-1$
-                }
-                if (errorLevel == -1){// Bug 38902 - sometimes -1 seems to be returned unnecessarily
-                    if (respMsg != null) {// Bug 41902 - NPE
-                        try {
-                            errorLevel = Integer.parseInt(respMsg.substring(0, 3));
-                            log.warn("ResponseCode==-1; parsed "+respMsg+ " as "+errorLevel);
-                          } catch (NumberFormatException e) {
-                            log.warn("ResponseCode==-1; could not parse "+respMsg+" hdr: "+hdr);
-                          }
-                    } else {
-                        respMsg=hdr; // for result
-                        log.warn("ResponseCode==-1 & null ResponseMessage. Header(0)= "+hdr);
+                    @SuppressWarnings("null") // Cannot be null here
+                    int errorLevel = conn.getResponseCode();
+                    String respMsg = conn.getResponseMessage();
+                    String hdr=conn.getHeaderField(0);
+                    if (hdr == null) {
+                        hdr="(null)";  // $NON-NLS-1$
                     }
-                }
-                if (errorLevel == -1) {
-                    res.setResponseCode("(null)"); // $NON-NLS-1$
-                } else {
-                    res.setResponseCode(Integer.toString(errorLevel));
-                }
-                res.setSuccessful(isSuccessCode(errorLevel));
+                    if (errorLevel == -1){// Bug 38902 - sometimes -1 seems to be returned unnecessarily
+                        if (respMsg != null) {// Bug 41902 - NPE
+                            try {
+                                errorLevel = Integer.parseInt(respMsg.substring(0, 3));
+                                log.warn("ResponseCode==-1; parsed "+respMsg+ " as "+errorLevel);
+                              } catch (NumberFormatException e) {
+                                log.warn("ResponseCode==-1; could not parse "+respMsg+" hdr: "+hdr);
+                              }
+                        } else {
+                            respMsg=hdr; // for result
+                            log.warn("ResponseCode==-1 & null ResponseMessage. Header(0)= "+hdr);
+                        }
+                    }
+                    if (errorLevel == -1) {
+                        res.setResponseCode("(null)"); // $NON-NLS-1$
+                    } else {
+                        res.setResponseCode(Integer.toString(errorLevel));
+                    }
+                    res.setSuccessful(isSuccessCode(errorLevel));
 
-                if (respMsg == null) {// has been seen in a redirect
-                    respMsg=hdr; // use header (if possible) if no message found
-                }
-                res.setResponseMessage(respMsg);
+                    if (respMsg == null) {// has been seen in a redirect
+                        respMsg=hdr; // use header (if possible) if no message found
+                    }
+                    res.setResponseMessage(respMsg);
 
-                String ct = conn.getContentType();
-                if (ct != null){
-                    res.setContentType(ct);// e.g. text/html; charset=ISO-8859-1
-                    res.setEncodingAndType(ct);
-                }
+                    String ct = conn.getContentType();
+                    if (ct != null){
+                        res.setContentType(ct);// e.g. text/html; charset=ISO-8859-1
+                        res.setEncodingAndType(ct);
+                    }
 
-                String responseHeaders = getResponseHeaders(conn);
-                res.setResponseHeaders(responseHeaders);
-     
-                if (res.isRedirect()) {
-                    res.setRedirectLocation(conn.getHeaderField(HTTPConstants.HEADER_LOCATION));
-                }
-                
-                // record headers size to allow HTTPSampleResult.getBytes() with different options
-                res.setHeadersSize(responseHeaders.replaceAll("\n", "\r\n") // $NON-NLS-1$ $NON-NLS-2$
-                        .length() + 2); // add 2 for a '\r\n' at end of headers (before data) 
-                if (log.isDebugEnabled()) {
-                    log.debug("Response headersSize=" + res.getHeadersSize() + " bodySize=" + res.getBodySize()
-                            + " Total=" + (res.getHeadersSize() + res.getBodySize()));
-                }
-                
-                // If we redirected automatically, the URL may have changed
-                if (getAutoRedirects()){
-                    res.setURL(conn.getURL());
-                }
+                    String responseHeaders = getResponseHeaders(conn);
+                    res.setResponseHeaders(responseHeaders);
+         
+                    if (res.isRedirect()) {
+                        res.setRedirectLocation(conn.getHeaderField(HTTPConstants.HEADER_LOCATION));
+                    }
+                    
+                    // record headers size to allow HTTPSampleResult.getBytes() with different options
+                    res.setHeadersSize(responseHeaders.replaceAll("\n", "\r\n") // $NON-NLS-1$ $NON-NLS-2$
+                            .length() + 2); // add 2 for a '\r\n' at end of headers (before data) 
+                    if (log.isDebugEnabled()) {
+                        log.debug("Response headersSize=" + res.getHeadersSize() + " bodySize=" + res.getBodySize()
+                                + " Total=" + (res.getHeadersSize() + res.getBodySize()));
+                    }
+                    
+                    // If we redirected automatically, the URL may have changed
+                    if (getAutoRedirects()){
+                        res.setURL(conn.getURL());
+                    }
 
-                // Store any cookies received in the cookie manager:
-                saveConnectionCookies(conn, url, getCookieManager());
-                
-                /************************************************************/
-                /* LAIT:保存内容到CDN Cache                                  */
-                /************************************************************/
-                final String responseCode = res.getResponseCode();
-                if ("200".compareTo(responseCode) <= 0 && "299".compareTo(responseCode) >= 0) {
-                	//如果可以被Cache，即返回值在不在(200, 299)范围内时
-                	cdn.set(conn, res);
-                }
-                /***********************************************************/
-                
-                // Save cache information
-                if (cacheManager != null){
-                    cacheManager.saveDetails(conn, res);
-                }
+                    // Store any cookies received in the cookie manager:
+                    saveConnectionCookies(conn, url, getCookieManager());
+                    /************************************************************/
+                    /* LAIT:保存内容到CDN Cache                                  */
+                    /************************************************************/
+                    System.out.println("Update record of key:" + requestUrl + " in cdn");
+                    this.cdn.set(conn, new HTTPSampleResult(res));
+                    /***********************************************************/
+                    cdn.printAll();
+                    // Save cache information
+                    if (cacheManager != null){
+                        cacheManager.saveDetails(conn, res);
+                    }
+                } 
 
                 res = resultProcessing(areFollowingRedirect, frameDepth, res);
 

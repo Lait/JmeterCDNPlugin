@@ -10,6 +10,7 @@ import java.util.TimeZone;
 
 import org.apache.commons.httpclient.*;
 import org.apache.commons.httpclient.methods.GetMethod;
+import org.apache.jmeter.protocol.http.sampler.HTTPSampleResult;
 
 public class TestPageLoader {
 	private CDN cdn;
@@ -51,36 +52,18 @@ public class TestPageLoader {
 		int retcode = client.executeMethod(method);
 		if (retcode > 200 && retcode < 299) return;
 		
-		StringBuffer body = new StringBuffer(2048);
-		String fullUrl = "http://" + _host + url;
+		HTTPSampleResult res = new HTTPSampleResult();
 		
+		String fullUrl = "http://" + _host + url;
 		
         String lastModified = getHeaderString(method.getResponseHeader("Last-Modified"));
         String expires      = getHeaderString(method.getResponseHeader("Expires"));
         String etag         = getHeaderString(method.getResponseHeader("Etag"));
         String cacheControl = getHeaderString(method.getResponseHeader("Cache-Control"));
         String date         = getHeaderString(method.getResponseHeader("Date"));
-		try {
-			BufferedReader br = new BufferedReader(new InputStreamReader(method.getResponseBodyAsStream()));
-			String line;
-			while((line = br.readLine()) != null) {
-				body.append(line);
-			}
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
 		
-		//Test codes
-		Calendar cal = Calendar.getInstance();
-		cal.add(Calendar.DAY_OF_MONTH, +1);
-	    SimpleDateFormat dateFormat = new SimpleDateFormat(
-	            "EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
-	    dateFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
-		expires = dateFormat.format(cal.getTime());
-		cacheControl = null;
-		/*******************************************************/
+
 		
-		System.out.println("Record of key:" + fullUrl + "is added to the cache.");
-		this.cdn.set(body.toString(), lastModified, cacheControl, expires, etag, fullUrl, date);
+		this.cdn.set(res, lastModified, cacheControl, expires, etag, fullUrl, date);
 	}
 }

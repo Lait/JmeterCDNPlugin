@@ -8,20 +8,20 @@ public class CDNSimulationSampler extends HTTPSamplerBase implements Interruptib
 
     private static final long serialVersionUID = 241L;
 
-    private final transient CDNSimulationJavaImpl cdn;
+    private final transient CDNSimulationJavaImpl cdnSimulator;
     
     public CDNSimulationSampler(){
-        cdn = new CDNSimulationJavaImpl(this);
+        cdnSimulator = new CDNSimulationJavaImpl(this);
     }
 
     @Override
     public boolean interrupt() {
-        return cdn.interrupt();
+        return cdnSimulator.interrupt();
     }
 
     @Override
     protected HTTPSampleResult sample(java.net.URL u, String method,
             boolean areFollowingRedirect, int depth) {
-        return cdn.sample(u, method, areFollowingRedirect, depth);
+        return cdnSimulator.sample(u, method, areFollowingRedirect, depth);
     }
 }

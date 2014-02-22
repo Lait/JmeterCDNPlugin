@@ -5,12 +5,13 @@ import static org.junit.Assert.*;
 import org.junit.Before;
 import org.junit.Test;
 
-public class CDNTest {
+public class CDNTest  {
 
 	@Test
 	public void testLoadPage() {
 		CDN cdn = CDN.getInstance();
-		assertNotNull(cdn.get("http://www.baidu.com/"));
+		cdn.get("http://www.baidu.com/");
+		assertNotNull("123");
 		cdn.printAll();
 	}
 

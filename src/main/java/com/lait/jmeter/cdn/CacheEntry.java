@@ -2,18 +2,20 @@ package com.lait.jmeter.cdn;
 
 import java.util.Date;
 
+import org.apache.jmeter.protocol.http.sampler.HTTPSampleResult;
+
 public class CacheEntry {
-	private String response;
+	private HTTPSampleResult response;
 	
     private String lastModified;
     private String etag;
     private Date   expires;
     private boolean noCache;
     
-    //ÓÃÓÚµ÷ÊÔºÍÀ©Õ¹
+    //ï¿½ï¿½ï¿½Úµï¿½ï¿½Ôºï¿½ï¿½ï¿½Õ¹
     private String cacheControl;
     
-    public CacheEntry(String response, String lastModified, Date expires, String etag, boolean noCache, String cacheControl){
+    public CacheEntry(HTTPSampleResult response, String lastModified, Date expires, String etag, boolean noCache, String cacheControl){
        this.response     = response;
        this.lastModified = lastModified;
        this.etag         = etag;
@@ -35,10 +37,10 @@ public class CacheEntry {
     public Date getExpires() {
         return expires;
     }
-	public String getResponse() {
+	public HTTPSampleResult getResponse() {
 		return response;
 	}
-	public void setResponse(String response) {
+	public void setResponse(HTTPSampleResult response) {
 		this.response = response;
 	}
 	public boolean isNoCache() {
