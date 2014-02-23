@@ -5,7 +5,6 @@ import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
 import org.apache.jmeter.samplers.Interruptible;
 
 public class CDNSimulationSampler extends HTTPSamplerBase implements Interruptible  {
-
     private static final long serialVersionUID = 241L;
 
     private final transient CDNSimulationJavaImpl cdnSimulator;
@@ -24,4 +23,8 @@ public class CDNSimulationSampler extends HTTPSamplerBase implements Interruptib
             boolean areFollowingRedirect, int depth) {
         return cdnSimulator.sample(u, method, areFollowingRedirect, depth);
     }
+
+	public void setPreloadUrls(String text) {
+		this.cdnSimulator.setPreloadUrls(text);
+	}
 }

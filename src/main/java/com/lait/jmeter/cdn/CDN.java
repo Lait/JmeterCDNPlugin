@@ -22,9 +22,7 @@ public class CDN {
 
 	private CDNPushServer server;
 	
-	//Ϊ��ȷ���������̹߳��?cdn�������ڴ���ֻ��һ�ݣ�����ʹ�õ���ģʽ
 	private static final CDN instance = new CDN();
-	private TestPageLoader loader;
 	
 	public static CDN getInstance() {
 		return instance;
@@ -33,7 +31,6 @@ public class CDN {
 	private CDN() {
 		this.cache  = new CDNCache<String, CacheEntry>("CDN-Cache in memory", 2048);
 		this.server = new CDNPushServer(this);
-		this.loader = new TestPageLoader(this);
 	}
 	
 	public HTTPSampleResult get(String url) {
@@ -143,7 +140,6 @@ public class CDN {
         }
 	}
 
-	//����ֵ��(200, 299)֮���򲻿ɻ��棬��֮�����
 	private boolean isCacheable(HTTPSampleResult res) {
         final String responseCode = res.getResponseCode();
         return "200".compareTo(responseCode) <= 0  // $NON-NLS-1$
