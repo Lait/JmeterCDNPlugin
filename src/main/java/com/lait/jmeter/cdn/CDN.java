@@ -149,4 +149,8 @@ public class CDN {
 	public void printAll() {
 		this.cache.printAll();
 	}
+
+	public void remove(String url) {
+		this.cache.remove(url);
+	}
 }

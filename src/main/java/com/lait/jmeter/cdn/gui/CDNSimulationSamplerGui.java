@@ -1,16 +1,12 @@
 package com.lait.jmeter.cdn.gui;
 
 import java.awt.BorderLayout;
-import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
 
 import javax.swing.BorderFactory;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
@@ -26,7 +22,6 @@ import org.apache.jmeter.samplers.gui.AbstractSamplerGui;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.util.JMeterUtils;
 
-import com.lait.jmeter.cdn.CDNInitializer;
 import com.lait.jmeter.cdn.CDNSimulationSampler;
 
 public class CDNSimulationSamplerGui extends AbstractSamplerGui implements ItemListener  {
@@ -57,20 +52,21 @@ public class CDNSimulationSamplerGui extends AbstractSamplerGui implements ItemL
 
     private JTextField sourceIpAddr; // does not apply to Java implementation
     
-    private JComboBox sourceIpType = new JComboBox(HTTPSamplerBase.getSourceTypeList());
+	private JComboBox<?> sourceIpType = new JComboBox<Object>(HTTPSamplerBase.getSourceTypeList());
 
     private final boolean isAJP;
 
 	private JTextArea cdnPreloadUrls;
 	
     private String preloadurls = "";
+    
 	private static final CDNSimulationSampler PreloadSampler = new CDNSimulationSampler();
 
 	public void setPreLoadPage(String urls) {
 		if (urls == null) return;
 		if (preloadurls.equals(urls)) return;
     	preloadurls = urls;
-    	PreloadSampler.setPreloadUrls(preloadurls);
+    	PreloadSampler.loadPagesManually(preloadurls);
     }
     
     public String getPreLoadUrls() {

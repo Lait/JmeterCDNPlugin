@@ -24,7 +24,7 @@ public class CDNSimulationSampler extends HTTPSamplerBase implements Interruptib
         return cdnSimulator.sample(u, method, areFollowingRedirect, depth);
     }
 
-	public void setPreloadUrls(String text) {
-		this.cdnSimulator.setPreloadUrls(text);
+	public void loadPagesManually(String text) {
+		this.cdnSimulator.load(text);
 	}
 }

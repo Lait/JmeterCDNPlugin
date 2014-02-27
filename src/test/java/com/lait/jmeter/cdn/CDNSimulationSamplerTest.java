@@ -17,11 +17,11 @@ public class CDNSimulationSamplerTest {
 	@Test
 	public void testLoadPage() {
 		CDNSimulationSampler sampler = new CDNSimulationSampler();
-		sampler.setPreloadUrls("http://www.baidu.com/\nhttp://www.sina.com.cn/");
+		sampler.loadPagesManually("http://www.baidu.com/\nhttp://www.sina.com.cn/");
 		assertNotNull(CDN.getInstance().get("http://www.baidu.com/"));
 		assertNotNull(CDN.getInstance().get("http://www.sina.com.cn/"));
 		
-		sampler.setPreloadUrls("http://www.tencent.com/zh-cn/index.shtml ");
+		sampler.loadPagesManually("http://www.tencent.com/zh-cn/index.shtml ");
 		assertNotNull(CDN.getInstance().get("http://www.tencent.com/zh-cn/index.shtml"));
 	}
 

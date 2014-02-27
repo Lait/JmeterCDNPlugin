@@ -8,8 +8,11 @@ import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 
+import com.sun.net.httpserver.HttpServer;
+
 class WorkerThread extends Thread {
 	private Socket socket;
+	private static final CDNSimulationSampler PreloadSampler = new CDNSimulationSampler();
 
 	public WorkerThread(Socket s) {
 		this.socket = s;
@@ -18,15 +21,23 @@ class WorkerThread extends Thread {
 	@Override
 	public void run() {
 		try {
-            // Wrapper the InputStream to BufferedReader
             BufferedReader input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            // Wrapper the OutputStream to BufferedWriter
             BufferedWriter output = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-			while(!Thread.interrupted()) {
+			
+            while(!Thread.interrupted()) {
+            	/*CDN push ∏Ò Ω
+            	 *  PUSH;URL;
+            	 * 
+            	 */
 				String line = input.readLine();
 				System.out.println(line);
 				output.write("Got it");
 				output.flush();
+				String url = "http://www.baidu.com/";
+				
+				//Remove it before loading
+				CDN.getInstance().remove(url);
+				PreloadSampler.loadPagesManually(url);
 			}
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
