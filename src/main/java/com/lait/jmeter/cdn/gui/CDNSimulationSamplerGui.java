@@ -25,9 +25,6 @@ import org.apache.jmeter.util.JMeterUtils;
 import com.lait.jmeter.cdn.CDNSimulationSampler;
 
 public class CDNSimulationSamplerGui extends AbstractSamplerGui implements ItemListener  {
-    /**
-	 * 
-	 */
 	private static final long serialVersionUID = 8075394275484311845L;
     
     private static final Font FONT_VERY_SMALL = new Font("SansSerif", Font.PLAIN, 9);

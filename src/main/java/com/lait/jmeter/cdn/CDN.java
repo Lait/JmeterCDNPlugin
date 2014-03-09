@@ -1,6 +1,5 @@
 package com.lait.jmeter.cdn;
 
-import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -8,7 +7,6 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
 
-import org.apache.commons.httpclient.HttpMethod;
 import org.apache.commons.httpclient.util.DateParseException;
 import org.apache.commons.httpclient.util.DateUtil;
 import org.apache.commons.lang3.StringUtils;
@@ -19,8 +17,6 @@ public class CDN {
 	CDNCache<String, CacheEntry> cache;
 
 	public static final long ONE_YEAR_MS = 365*24*60*60*1000L;
-
-	private CDNPushServer server;
 	
 	private static final CDN instance = new CDN();
 	
@@ -30,7 +26,6 @@ public class CDN {
 	
 	private CDN() {
 		this.cache  = new CDNCache<String, CacheEntry>("CDN-Cache in memory", 2048);
-		this.server = new CDNPushServer(this);
 	}
 	
 	public HTTPSampleResult get(String url) {
@@ -44,8 +39,9 @@ public class CDN {
 		Date curr = new Date();
 
 		if (entry.getExpires() != null && curr.compareTo(entry.getExpires()) > 0) {
-			System.out.println("Expire date is  " + entry.getExpires());
-			System.out.println("Current date is " + curr.toString());
+			//Remove record if expired.
+			//System.out.println("Expire date is  " + entry.getExpires());
+			//System.out.println("Current date is " + curr.toString());
 			this.cache.remove(url);
 			return null;
 		} else {
@@ -69,10 +65,10 @@ public class CDN {
 		expires = dateFormat.format(cal.getTime());
 		cacheControl = null;
 		/*******************************************************/
+		
         if (cacheControl == null) {
         	System.out.println("No cache-control offered, use default settings.");
         } else {  
-	        //如果cacheControl不存在或包含no-store则不进行缓存
         	if (cacheControl.contains("no-store") || cacheControl.contains("private")) {
 	        	System.out.println("This record of key:" + url + " is not cacheable!");
 	            return;
@@ -109,7 +105,7 @@ public class CDN {
 	                try {
 	                    expiresDate = DateUtil.parseDate(expires);
 	                } catch (DateParseException e) {
-	                	//如果格式不合法，则设置为初始时间January 1, 1970, 00:00:00 GMT.
+	                	//If expires not valid, set time to January 1, 1970, 00:00:00 GMT.
 	                    expiresDate = new Date(0L); 
 	                }
 	            } 
@@ -120,8 +116,7 @@ public class CDN {
 	}
 
 	public boolean isCached(String url) {
-		this.cache.get(url);
-		return this.cache.isPresent(url);
+		return this.get(url) == null ? false : true;
 	}
 
 	public void set(HttpURLConnection conn, HTTPSampleResult res) {
