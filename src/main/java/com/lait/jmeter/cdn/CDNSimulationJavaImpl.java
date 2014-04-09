@@ -120,7 +120,7 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
     }
     
     //从cdn中取出数据填充到res
-    protected void setResFromCDN(String requestUrl, URL url, String method, HTTPSampleResult res) {
+    protected HTTPSampleResult setResFromCDN(String requestUrl, URL url, String method, HTTPSampleResult res) {
     	System.out.println("Record of key:" + requestUrl + " is cached in cdn. So use it");
         /*Debug
         System.out.println("*" + temp.getResponseCode() + "*");
@@ -148,10 +148,11 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
         res.sampleEnd();
         res.setResponseNoContent();
         res.setSuccessful(true);
+        return res;
     }
     
     //从源服务器中取得数据填充到res中返回
-    protected void setResFromSource(String requestUrl, URL url, String method, HTTPSampleResult res) {
+    protected HTTPSampleResult setResFromSource(String requestUrl, URL url, String method, HTTPSampleResult res) {
     	System.out.println("Record of key:" + requestUrl + " is not cached in cdn.");
         // Sampling proper - establish the connection and read the response:
         // Repeatedly try to connect:
@@ -273,6 +274,7 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
 	        if (cacheManager != null){
 	            cacheManager.saveDetails(conn, res);
 	        }
+	        return res;
         } catch (IOException e) {
             res.sampleEnd();
             savedConn = null; // we don't want interrupt to try disconnection again
@@ -281,7 +283,7 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
                 conn.disconnect();
             }
             conn=null; // Don't process again
-            res = errorResult(e, res);
+            return errorResult(e, res);
         } finally {
             // calling disconnect doesn't close the connection immediately,
             // but indicates we're through with it. The JVM should close
@@ -330,10 +332,9 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
         fullURL = fullURL + url.getPath();
         
         if (cdn.isCached(fullURL)) {
-        	setResFromCDN(fullURL, url, method, res);
+        	res = setResFromCDN(fullURL, url, method, res);
         } else {
-        	setResFromSource(fullURL, url, method, res);
-        	
+        	res = setResFromSource(fullURL, url, method, res);
         } 
         res = resultProcessing(areFollowingRedirect, frameDepth, res);
         log.debug("End : sample");
