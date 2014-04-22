@@ -6,8 +6,6 @@ import org.apache.jmeter.protocol.http.control.gui.HttpTestSampleGui;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.lait.jmeter.cdn.gui.CDNSimulationSamplerGui;
-
 public class CDNSimulationSamplerTest {
 
 	@Before

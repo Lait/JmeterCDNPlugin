@@ -1,22 +1,43 @@
 package com.lait.jmeter.cdn;
 
+import java.io.BufferedInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.BindException;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
+import java.net.Proxy;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.GZIPInputStream;
+
+import org.apache.commons.io.input.CountingInputStream;
+import org.apache.jmeter.protocol.http.control.AuthManager;
+import org.apache.jmeter.protocol.http.control.Authorization;
 import org.apache.jmeter.protocol.http.control.CacheManager;
 import org.apache.jmeter.protocol.http.control.CookieManager;
+import org.apache.jmeter.protocol.http.control.Header;
+import org.apache.jmeter.protocol.http.control.HeaderManager;
+import org.apache.jmeter.protocol.http.sampler.HTTPAbstractImpl;
 import org.apache.jmeter.protocol.http.sampler.HTTPJavaImpl;
 import org.apache.jmeter.protocol.http.sampler.HTTPSampleResult;
 import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
 import org.apache.jmeter.protocol.http.sampler.PostWriter;
+import org.apache.jmeter.protocol.http.sampler.PutWriter;
 import org.apache.jmeter.protocol.http.util.HTTPConstants;
+import org.apache.jmeter.samplers.SampleResult;
+import org.apache.jmeter.testelement.property.CollectionProperty;
+import org.apache.jmeter.testelement.property.PropertyIterator;
+import org.apache.jmeter.util.JMeterUtils;
+import org.apache.jmeter.util.SSLManager;
 import org.apache.jorphan.logging.LoggingManager;
 import org.apache.log.Logger;
 
-public class CDNSimulationJavaImpl extends HTTPJavaImpl {
+public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
 	
     private static final boolean OBEY_CONTENT_LENGTH = false; // $NON-NLS-1$
 
@@ -42,12 +63,26 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
         super(base);
         this.cdn = CDN.getInstance();
     }
-    
-    /**********************************************************************
-     * 由于在超类中不可见而不可继承，故直接拷贝一份过来使用                                *
-     * 来自org.apache.jmeter.protocol.http.sampler.HTTPJavaImpl           *
-     **********************************************************************/
-    
+   
+
+        /**
+     * Set request headers in preparation to opening a connection.
+     *
+     * @param conn
+     *            <code>URLConnection</code> to set headers on
+     * @exception IOException
+     *                if an I/O exception occurs
+     */
+    protected void setPostHeaders(URLConnection conn) throws IOException {
+        postOrPutWriter = new PostWriter();
+        postOrPutWriter.setHeaders(conn, testElement);
+    }
+
+    private void setPutHeaders(URLConnection conn) throws IOException {
+        postOrPutWriter = new PutWriter();
+        postOrPutWriter.setHeaders(conn, testElement);
+    }
+
     /**
      * Send POST data from <code>Entry</code> to the open connection.
      * This also handles sending data for PUT requests
@@ -62,13 +97,215 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
         return postOrPutWriter.sendPostData(connection, testElement);
     }
 
-    protected String sendPutData(URLConnection connection) throws IOException {
+    private String sendPutData(URLConnection connection) throws IOException {
         return postOrPutWriter.sendPostData(connection, testElement);
     }
-    
+
     /**
-     * From the <code>HttpURLConnection</code>, store all the "set-cookie"
-     * key-pair values in the cookieManager of the <code>UrlConfig</code>.
+     * Returns an <code>HttpURLConnection</code> fully ready to attempt
+     * connection. This means it sets the request method (GET or POST), headers,
+     * cookies, and authorization for the URL request.
+     * <p>
+     * The request infos are saved into the sample result if one is provided.
+     *
+     * @param u
+     *            <code>URL</code> of the URL request
+     * @param method
+     *            GET, POST etc
+     * @param res
+     *            sample result to save request infos to
+     * @return <code>HttpURLConnection</code> ready for .connect
+     * @exception IOException
+     *                if an I/O Exception occurs
+     */
+    protected HttpURLConnection setupConnection(URL u, String method, HTTPSampleResult res) throws IOException {
+        SSLManager sslmgr = null;
+        if (HTTPConstants.PROTOCOL_HTTPS.equalsIgnoreCase(u.getProtocol())) {
+            try {
+                sslmgr=SSLManager.getInstance(); // N.B. this needs to be done before opening the connection
+            } catch (Exception e) {
+                log.warn("Problem creating the SSLManager: ", e);
+            }
+        }
+
+        final HttpURLConnection conn;
+        final String proxyHost = getProxyHost();
+        final int proxyPort = getProxyPortInt();
+        if (proxyHost.length() > 0 && proxyPort > 0){
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
+            //TODO - how to define proxy authentication for a single connection?
+            // It's not clear if this is possible
+//                String user = getProxyUser();
+//                if (user.length() > 0){
+//                    Authenticator auth = new ProxyAuthenticator(user, getProxyPass());
+//                }
+            conn = (HttpURLConnection) u.openConnection(proxy);
+        } else {
+            conn = (HttpURLConnection) u.openConnection();
+        }
+
+        // Update follow redirects setting just for this connection
+        conn.setInstanceFollowRedirects(getAutoRedirects());
+
+        int cto = getConnectTimeout();
+        if (cto > 0){
+            conn.setConnectTimeout(cto);
+        }
+
+        int rto = getResponseTimeout();
+        if (rto > 0){
+            conn.setReadTimeout(rto);
+        }
+
+        if (HTTPConstants.PROTOCOL_HTTPS.equalsIgnoreCase(u.getProtocol())) {
+            try {
+                if (null != sslmgr){
+                    sslmgr.setContext(conn); // N.B. must be done after opening connection
+                }
+            } catch (Exception e) {
+                log.warn("Problem setting the SSLManager for the connection: ", e);
+            }
+        }
+
+        // a well-bahaved browser is supposed to send 'Connection: close'
+        // with the last request to an HTTP server. Instead, most browsers
+        // leave it to the server to close the connection after their
+        // timeout period. Leave it to the JMeter user to decide.
+        if (getUseKeepAlive()) {
+            conn.setRequestProperty(HTTPConstants.HEADER_CONNECTION, HTTPConstants.KEEP_ALIVE);
+        } else {
+            conn.setRequestProperty(HTTPConstants.HEADER_CONNECTION, HTTPConstants.CONNECTION_CLOSE);
+        }
+
+        conn.setRequestMethod(method);
+        setConnectionHeaders(conn, u, getHeaderManager(), getCacheManager());
+        String cookies = setConnectionCookie(conn, u, getCookieManager());
+
+        setConnectionAuthorization(conn, u, getAuthManager());
+
+        if (method.equals(HTTPConstants.POST)) {
+            setPostHeaders(conn);
+        } else if (method.equals(HTTPConstants.PUT)) {
+            setPutHeaders(conn);
+        }
+
+        if (res != null) {
+            res.setRequestHeaders(getConnectionHeaders(conn));
+            res.setCookies(cookies);
+        }
+
+        return conn;
+    }
+
+    /**
+     * Reads the response from the URL connection.
+     *
+     * @param conn
+     *            URL from which to read response
+     * @return response content
+     * @exception IOException
+     *                if an I/O exception occurs
+     */
+    protected byte[] readResponse(HttpURLConnection conn, SampleResult res) throws IOException {
+        BufferedInputStream in;
+
+        final int contentLength = conn.getContentLength();
+        if ((contentLength == 0)
+            && OBEY_CONTENT_LENGTH) {
+            log.info("Content-Length: 0, not reading http-body");
+            res.setResponseHeaders(getResponseHeaders(conn));
+            res.latencyEnd();
+            return NULL_BA;
+        }
+
+        // works OK even if ContentEncoding is null
+        boolean gzipped = HTTPConstants.ENCODING_GZIP.equals(conn.getContentEncoding());
+        InputStream instream = null;
+        try {
+            instream = new CountingInputStream(conn.getInputStream());
+            if (gzipped) {
+                in = new BufferedInputStream(new GZIPInputStream(instream));
+            } else {
+                in = new BufferedInputStream(instream);
+            }
+        } catch (IOException e) {
+            if (! (e.getCause() instanceof FileNotFoundException))
+            {
+                log.error("readResponse: "+e.toString());
+                Throwable cause = e.getCause();
+                if (cause != null){
+                    log.error("Cause: "+cause);
+                    if(cause instanceof Error) {
+                        throw (Error)cause;
+                    }
+                }
+            }
+            // Normal InputStream is not available
+            InputStream errorStream = conn.getErrorStream();
+            if (errorStream == null) {
+                log.info("Error Response Code: "+conn.getResponseCode()+", Server sent no Errorpage");
+                res.setResponseHeaders(getResponseHeaders(conn));
+                res.latencyEnd();
+                return NULL_BA;
+            }
+
+            log.info("Error Response Code: "+conn.getResponseCode());
+
+            if (gzipped) {
+                in = new BufferedInputStream(new GZIPInputStream(errorStream));
+            } else {
+                in = new BufferedInputStream(errorStream);
+            }
+        } catch (Exception e) {
+            log.error("readResponse: "+e.toString());
+            Throwable cause = e.getCause();
+            if (cause != null){
+                log.error("Cause: "+cause);
+                if(cause instanceof Error) {
+                    throw (Error)cause;
+                }
+            }
+            in = new BufferedInputStream(conn.getErrorStream());
+        }
+        // N.B. this closes 'in'
+        byte[] responseData = readResponse(res, in, contentLength);
+        if (instream != null) {
+            res.setBodySize(((CountingInputStream) instream).getCount());
+            instream.close();
+        }
+        return responseData;
+    }
+
+    /**
+     * Gets the ResponseHeaders from the URLConnection
+     *
+     * @param conn
+     *            connection from which the headers are read
+     * @return string containing the headers, one per line
+     */
+    protected String getResponseHeaders(HttpURLConnection conn) {
+        StringBuilder headerBuf = new StringBuilder();
+        headerBuf.append(conn.getHeaderField(0));// Leave header as is
+        // headerBuf.append(conn.getHeaderField(0).substring(0, 8));
+        // headerBuf.append(" ");
+        // headerBuf.append(conn.getResponseCode());
+        // headerBuf.append(" ");
+        // headerBuf.append(conn.getResponseMessage());
+        headerBuf.append("\n"); //$NON-NLS-1$
+
+        String hfk;
+        for (int i = 1; (hfk=conn.getHeaderFieldKey(i)) != null; i++) {
+            headerBuf.append(hfk);
+            headerBuf.append(": "); // $NON-NLS-1$
+            headerBuf.append(conn.getHeaderField(i));
+            headerBuf.append("\n"); // $NON-NLS-1$
+        }
+        return headerBuf.toString();
+    }
+
+    /**
+     * Extracts all the required cookies for that particular URL request and
+     * sets them in the <code>HttpURLConnection</code> passed in.
      *
      * @param conn
      *            <code>HttpUrlConnection</code> which represents the URL
@@ -79,19 +316,99 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
      *            the <code>CookieManager</code> containing all the cookies
      *            for this <code>UrlConfig</code>
      */
-    protected void saveConnectionCookies(HttpURLConnection conn, URL u, CookieManager cookieManager) {
+    private String setConnectionCookie(HttpURLConnection conn, URL u, CookieManager cookieManager) {
+        String cookieHeader = null;
         if (cookieManager != null) {
-            for (int i = 1; conn.getHeaderFieldKey(i) != null; i++) {
-                if (conn.getHeaderFieldKey(i).equalsIgnoreCase(HTTPConstants.HEADER_SET_COOKIE)) {
-                    cookieManager.addCookieFromHeader(conn.getHeaderField(i), u);
+            cookieHeader = cookieManager.getCookieHeaderForURL(u);
+            if (cookieHeader != null) {
+                conn.setRequestProperty(HTTPConstants.HEADER_COOKIE, cookieHeader);
+            }
+        }
+        return cookieHeader;
+    }
+
+    /**
+     * Extracts all the required headers for that particular URL request and
+     * sets them in the <code>HttpURLConnection</code> passed in
+     *
+     * @param conn
+     *            <code>HttpUrlConnection</code> which represents the URL
+     *            request
+     * @param u
+     *            <code>URL</code> of the URL request
+     * @param headerManager
+     *            the <code>HeaderManager</code> containing all the cookies
+     *            for this <code>UrlConfig</code>
+     * @param cacheManager the CacheManager (may be null)
+     */
+    private void setConnectionHeaders(HttpURLConnection conn, URL u, HeaderManager headerManager, CacheManager cacheManager) {
+        // Add all the headers from the HeaderManager
+        if (headerManager != null) {
+            CollectionProperty headers = headerManager.getHeaders();
+            if (headers != null) {
+                PropertyIterator i = headers.iterator();
+                while (i.hasNext()) {
+                    Header header = (Header) i.next().getObjectValue();
+                    String n = header.getName();
+                    String v = header.getValue();
+                    conn.addRequestProperty(n, v);
                 }
             }
         }
+        if (cacheManager != null){
+            cacheManager.setHeaders(conn, u);
+        }
     }
-    
-    /**********************************************************************
-     * 结束                                                                                                                  *
-     **********************************************************************/
+
+    /**
+     * Get all the headers for the <code>HttpURLConnection</code> passed in
+     *
+     * @param conn
+     *            <code>HttpUrlConnection</code> which represents the URL
+     *            request
+     * @return the headers as a string
+     */
+    private String getConnectionHeaders(HttpURLConnection conn) {
+        // Get all the request properties, which are the headers set on the connection
+        StringBuilder hdrs = new StringBuilder(100);
+        Map<String, List<String>> requestHeaders = conn.getRequestProperties();
+        for(Map.Entry<String, List<String>> entry : requestHeaders.entrySet()) {
+            String headerKey=entry.getKey();
+            // Exclude the COOKIE header, since cookie is reported separately in the sample
+            if(!HTTPConstants.HEADER_COOKIE.equalsIgnoreCase(headerKey)) {
+                // value is a List of Strings
+                for (String value : entry.getValue()){
+                    hdrs.append(headerKey);
+                    hdrs.append(": "); // $NON-NLS-1$
+                    hdrs.append(value);
+                    hdrs.append("\n"); // $NON-NLS-1$
+                }
+            }
+        }
+        return hdrs.toString();
+    }
+
+    /**
+     * Extracts all the required authorization for that particular URL request
+     * and sets it in the <code>HttpURLConnection</code> passed in.
+     *
+     * @param conn
+     *            <code>HttpUrlConnection</code> which represents the URL
+     *            request
+     * @param u
+     *            <code>URL</code> of the URL request
+     * @param authManager
+     *            the <code>AuthManager</code> containing all the cookies for
+     *            this <code>UrlConfig</code>
+     */
+    private void setConnectionAuthorization(HttpURLConnection conn, URL u, AuthManager authManager) {
+        if (authManager != null) {
+            Authorization auth = authManager.getAuthForURL(u);
+            if (auth != null) {
+                conn.setRequestProperty(HTTPConstants.HEADER_AUTHORIZATION, auth.toBasicHeader());
+            }
+        }
+    }
     
     //解析urls字符串，加载包含的页面到cdn内存
     public void load(String urls) {
@@ -131,7 +448,6 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
         System.out.println("*" + temp.getHeadersSize() + "*");
         System.out.println("*" + temp.getURL() + "*");
         */
-    	/*
     	HTTPSampleResult temp = cdn.get(requestUrl);
     	res.sampleEnd();
     	res.setResponseCode(temp.getResponseCode());
@@ -144,10 +460,11 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
         }
         res.setHeadersSize(temp.getHeadersSize());
         res.setURL(temp.getURL());
-        */
+    	/*
         res.sampleEnd();
         res.setResponseNoContent();
         res.setSuccessful(true);
+        */
         return res;
     }
     
@@ -274,6 +591,7 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
 	        if (cacheManager != null){
 	            cacheManager.saveDetails(conn, res);
 	        }
+	        
 	        return res;
         } catch (IOException e) {
             res.sampleEnd();
@@ -295,12 +613,6 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
     
     @Override
     protected HTTPSampleResult sample(URL url, String method, boolean areFollowingRedirect, int frameDepth) {
-    	/*
-    	System.out.println("-" + url + "-");
-    	System.out.println("-" + method + "-");
-    	System.out.println("-" + areFollowingRedirect + "-");
-    	System.out.println("-" + frameDepth + "-");
-    	*/
     	
         String urlStr = url.toString();
         log.debug("Start : sample " + urlStr);
@@ -339,5 +651,50 @@ public class CDNSimulationJavaImpl extends HTTPJavaImpl {
         res = resultProcessing(areFollowingRedirect, frameDepth, res);
         log.debug("End : sample");
         return res;
+    }
+
+    protected void disconnect(HttpURLConnection conn) {
+        if (conn != null) {
+            String connection = conn.getHeaderField(HTTPConstants.HEADER_CONNECTION);
+            String protocol = conn.getHeaderField(0);
+            if ((connection == null && (protocol == null || !protocol.startsWith(HTTPConstants.HTTP_1_1)))
+                    || (connection != null && connection.equalsIgnoreCase(HTTPConstants.CONNECTION_CLOSE))) {
+                conn.disconnect();
+            } // TODO ? perhaps note connection so it can be disconnected at end of test?
+        }
+    }
+
+    /**
+     * From the <code>HttpURLConnection</code>, store all the "set-cookie"
+     * key-pair values in the cookieManager of the <code>UrlConfig</code>.
+     *
+     * @param conn
+     *            <code>HttpUrlConnection</code> which represents the URL
+     *            request
+     * @param u
+     *            <code>URL</code> of the URL request
+     * @param cookieManager
+     *            the <code>CookieManager</code> containing all the cookies
+     *            for this <code>UrlConfig</code>
+     */
+    private void saveConnectionCookies(HttpURLConnection conn, URL u, CookieManager cookieManager) {
+        if (cookieManager != null) {
+            for (int i = 1; conn.getHeaderFieldKey(i) != null; i++) {
+                if (conn.getHeaderFieldKey(i).equalsIgnoreCase(HTTPConstants.HEADER_SET_COOKIE)) {
+                    cookieManager.addCookieFromHeader(conn.getHeaderField(i), u);
+                }
+            }
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public boolean interrupt() {
+        HttpURLConnection conn = savedConn;
+        if (conn != null) {
+            savedConn = null;
+            conn.disconnect();
+        }
+        return conn != null;
     }
 }
