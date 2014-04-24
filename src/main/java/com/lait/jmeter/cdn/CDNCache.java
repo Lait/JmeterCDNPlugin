@@ -183,7 +183,7 @@ public class CDNCache<K, V> implements Cache<K, V> {
 		 while(it.hasNext()) {
 			 Entry<K, V> e = it.next();
 			 System.out.println(e.getKey());
-			 System.out.println(((CacheEntry)e.getValue()).getResponse().getResponseData().toString());
+			 //System.out.println(((CacheEntry)e.getValue()).getResponse().getResponseData().toString());
 		 }
 	}
 

@@ -23,7 +23,6 @@ import org.apache.jmeter.protocol.http.control.CookieManager;
 import org.apache.jmeter.protocol.http.control.Header;
 import org.apache.jmeter.protocol.http.control.HeaderManager;
 import org.apache.jmeter.protocol.http.sampler.HTTPAbstractImpl;
-import org.apache.jmeter.protocol.http.sampler.HTTPJavaImpl;
 import org.apache.jmeter.protocol.http.sampler.HTTPSampleResult;
 import org.apache.jmeter.protocol.http.sampler.HTTPSamplerBase;
 import org.apache.jmeter.protocol.http.sampler.PostWriter;
@@ -39,11 +38,14 @@ import org.apache.log.Logger;
 
 public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
 	
-    private static final boolean OBEY_CONTENT_LENGTH = false; // $NON-NLS-1$
+    private static final boolean OBEY_CONTENT_LENGTH =
+            JMeterUtils.getPropDefault("httpsampler.obey_contentlength", false); // $NON-NLS-1$
 
     private static final Logger log = LoggingManager.getLoggerForClass();
 
-    private static final int MAX_CONN_RETRIES = 10;
+    private static final int MAX_CONN_RETRIES =
+            JMeterUtils.getPropDefault("http.java.sampler.retries" // $NON-NLS-1$
+                    ,10); // Maximum connection retries
 
     static {
         log.info("Maximum connection retries = " + MAX_CONN_RETRIES); // $NON-NLS-1$
@@ -57,11 +59,8 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
 
     private volatile HttpURLConnection savedConn;
     
-    private CDN cdn;
-    
     protected CDNSimulationJavaImpl(HTTPSamplerBase base) {
         super(base);
-        this.cdn = CDN.getInstance();
     }
    
 
@@ -436,41 +435,9 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
     	this.sample(url, "GET", false, 0);
     }
     
-    //从cdn中取出数据填充到res
-    protected HTTPSampleResult setResFromCDN(String requestUrl, URL url, String method, HTTPSampleResult res) {
-    	System.out.println("Record of key:" + requestUrl + " is cached in cdn. So use it");
-        /*Debug
-        System.out.println("*" + temp.getResponseCode() + "*");
-        System.out.println("*" + temp.getResponseMessage() + "*");
-        System.out.println("*" + temp.getContentType() + "*");
-        System.out.println("*" + temp.getDataEncodingWithDefault() + "*");
-        if (temp.isRedirect()) System.out.println("*" + temp.getRedirectLocation() + "*");
-        System.out.println("*" + temp.getHeadersSize() + "*");
-        System.out.println("*" + temp.getURL() + "*");
-        */
-    	HTTPSampleResult temp = cdn.get(requestUrl);
-    	res.sampleEnd();
-    	res.setResponseCode(temp.getResponseCode());
-    	res.setSuccessful(true);
-    	res.setResponseMessage(temp.getResponseMessage());
-    	res.setContentType(temp.getContentType());
-        res.setEncodingAndType(temp.getDataEncodingWithDefault());
-        if (res.isRedirect()) {
-        	res.setRedirectLocation(temp.getRedirectLocation());
-        }
-        res.setHeadersSize(temp.getHeadersSize());
-        res.setURL(temp.getURL());
-    	/*
-        res.sampleEnd();
-        res.setResponseNoContent();
-        res.setSuccessful(true);
-        */
-        return res;
-    }
-    
     //从源服务器中取得数据填充到res中返回
-    protected HTTPSampleResult setResFromSource(String requestUrl, URL url, String method, HTTPSampleResult res) {
-    	System.out.println("Record of key:" + requestUrl + " is not cached in cdn.");
+    protected HTTPSampleResult setResFromSource(URL url, String method, HTTPSampleResult res) {
+    	System.out.println("LOG:Starting to pull from Source.");
         // Sampling proper - establish the connection and read the response:
         // Repeatedly try to connect:
         int retry;
@@ -518,6 +485,8 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
 	            res.setQueryString(putBody);
 	        }
 	        responseData = readResponse(conn, res);
+	        System.out.println("LOG:Done!");
+	        
 	        res.sampleEnd();
 	        
 	        //成功从源服务器获取数据，现在开始填充数据到res中
@@ -584,8 +553,8 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
 	        // Store any cookies received in the cookie manager:
 	        saveConnectionCookies(conn, url, getCookieManager());
 	
-	        System.out.println("Update record of key:" + requestUrl + " in cdn");
-	        this.cdn.set(conn, new HTTPSampleResult(res));
+	        System.out.println("Update record of key:" + url.toString() + " in cdn");
+	        CDN.getInstance().set(conn, new HTTPSampleResult(res));
 	        
 	        // Save cache information
 	        if (cacheManager != null){
@@ -594,6 +563,7 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
 	        
 	        return res;
         } catch (IOException e) {
+        	System.out.println("ERROR:Can not connect to " + url.toString());
             res.sampleEnd();
             savedConn = null; // we don't want interrupt to try disconnection again
             // We don't want to continue using this connection, even if KeepAlive is set
@@ -610,6 +580,7 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
             disconnect(conn); // Disconnect unless using KeepAlive
         }
     }
+    
     
     @Override
     protected HTTPSampleResult sample(URL url, String method, boolean areFollowingRedirect, int frameDepth) {
@@ -630,25 +601,25 @@ public class CDNSimulationJavaImpl extends HTTPAbstractImpl {
         final CacheManager cacheManager = getCacheManager();
         if (cacheManager != null && HTTPConstants.GET.equalsIgnoreCase(method)) {
            if (cacheManager.inCache(url)) {
+        	   System.out.println("LOG:Use browser cached data.");
                res.sampleEnd();
                res.setResponseNoContent();
                res.setSuccessful(true);
                return res;
            }
         }
-
-        String fullURL = "http://" + url.getHost();
-        if (url.getPort() > 0 && url.getPort() != url.getDefaultPort()) {
-        	fullURL = fullURL + ":" + url.getPort();
-        }
-        fullURL = fullURL + url.getPath();
-        
-        if (cdn.isCached(fullURL)) {
-        	res = setResFromCDN(fullURL, url, method, res);
+   
+        if (CDN.getInstance().isCached(url.toString())) {
+        	System.out.println("LOG:Record of key:" + url.toString() + " is cached in CDN.");
+            res.sampleEnd();
+            res.setResponseNoContent();
+            res.setSuccessful(true);
         } else {
-        	res = setResFromSource(fullURL, url, method, res);
-        } 
-        res = resultProcessing(areFollowingRedirect, frameDepth, res);
+        	System.out.println("LOG:Record of key:" + url.toString() + " is not cached in CDN.");
+        	res = setResFromSource(url, method, res);
+            res = resultProcessing(areFollowingRedirect, frameDepth, res);
+        }
+        
         log.debug("End : sample");
         return res;
     }

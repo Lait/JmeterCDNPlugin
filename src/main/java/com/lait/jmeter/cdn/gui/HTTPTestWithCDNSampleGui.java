@@ -11,6 +11,7 @@ import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 
 import org.apache.jmeter.gui.util.HorizontalPanel;
@@ -33,6 +34,7 @@ public class HTTPTestWithCDNSampleGui extends AbstractSamplerGui implements Item
     private static final Font FONT_SMALL = new Font("SansSerif", Font.PLAIN, 12);
 
     private MultipartUrlConfigGui urlConfigGui;
+    
 
     private JCheckBox getImages;
     
@@ -53,6 +55,10 @@ public class HTTPTestWithCDNSampleGui extends AbstractSamplerGui implements Item
     private JComboBox sourceIpType = new JComboBox(HTTPSamplerBase.getSourceTypeList());
 
     private final boolean isAJP;
+
+	private JCheckBox useHttpCacheControl;
+
+	private JTextArea resourceUrls;
     
     public HTTPTestWithCDNSampleGui() {
         isAJP = false;
@@ -69,10 +75,15 @@ public class HTTPTestWithCDNSampleGui extends AbstractSamplerGui implements Item
      * {@inheritDoc}
      */
     @Override
+    //Set default value
     public void configure(TestElement element) {
         super.configure(element);
-        final HTTPSamplerBase samplerBase = (HTTPSamplerBase) element;
+               
         urlConfigGui.configure(element);
+        
+        final CDNSimulationSampler samplerBase = (CDNSimulationSampler) element;
+		useHttpCacheControl.setSelected(samplerBase.USE_CACHE_CONTROL);
+		resourceUrls.setText(samplerBase.PAGES_LIST);
         getImages.setSelected(samplerBase.isImageParser());
         concurrentDwn.setSelected(samplerBase.isConcurrentDwn());
         concurrentPool.setText(samplerBase.getConcurrentPool());
@@ -105,18 +116,22 @@ public class HTTPTestWithCDNSampleGui extends AbstractSamplerGui implements Item
     @Override
     public void modifyTestElement(TestElement sampler) {
         sampler.clear();
+        
         urlConfigGui.modifyTestElement(sampler);
-        final HTTPSamplerBase samplerBase = (HTTPSamplerBase) sampler;
-        samplerBase.setImageParser(getImages.isSelected());
+        
+        final CDNSimulationSampler cdnSampler = (CDNSimulationSampler) sampler;
+        cdnSampler.loadPagesManually(this.resourceUrls.getText());
+        cdnSampler.useHttpCacheControl(this.useHttpCacheControl.isSelected());
+        cdnSampler.setImageParser(getImages.isSelected());
         enableConcurrentDwn(getImages.isSelected());
-        samplerBase.setConcurrentDwn(concurrentDwn.isSelected());
-        samplerBase.setConcurrentPool(concurrentPool.getText());
-        samplerBase.setMonitor(isMon.isSelected());
-        samplerBase.setMD5(useMD5.isSelected());
-        samplerBase.setEmbeddedUrlRE(embeddedRE.getText());
+        cdnSampler.setConcurrentDwn(concurrentDwn.isSelected());
+        cdnSampler.setConcurrentPool(concurrentPool.getText());
+        cdnSampler.setMonitor(isMon.isSelected());
+        cdnSampler.setMD5(useMD5.isSelected());
+        cdnSampler.setEmbeddedUrlRE(embeddedRE.getText());
         if (!isAJP) {
-            samplerBase.setIpSource(sourceIpAddr.getText());
-            samplerBase.setIpSourceType(sourceIpType.getSelectedIndex());
+            cdnSampler.setIpSource(sourceIpAddr.getText());
+            cdnSampler.setIpSourceType(sourceIpType.getSelectedIndex());
         }
         this.configureTestElement(sampler);
     }
@@ -140,13 +155,27 @@ public class HTTPTestWithCDNSampleGui extends AbstractSamplerGui implements Item
         add(urlConfigGui, BorderLayout.CENTER);
 
         // Bottom (embedded resources, source address and optional tasks)
+        
         JPanel bottomPane = new VerticalPanel();
+        bottomPane.add(createCDNConfigPanel());
         bottomPane.add(createEmbeddedRsrcPanel());
         JPanel optionAndSourcePane = new HorizontalPanel();
         optionAndSourcePane.add(createSourceAddrPanel());
         optionAndSourcePane.add(createOptionalTasksPanel());
         bottomPane.add(optionAndSourcePane);
         add(bottomPane, BorderLayout.SOUTH);
+    }
+    
+    protected JPanel createCDNConfigPanel() {
+    	final JPanel cdnConfigPanel = new VerticalPanel();
+    	cdnConfigPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), "CDN preload"));
+    	this.useHttpCacheControl = new JCheckBox();
+    	this.resourceUrls = new JTextArea(3, 10);
+    	cdnConfigPanel.add(new JLabel("Use Cache-Control"));
+    	cdnConfigPanel.add(useHttpCacheControl);
+    	cdnConfigPanel.add(new JLabel("Resource urls"));
+    	cdnConfigPanel.add(resourceUrls);
+    	return cdnConfigPanel;
     }
 
     protected JPanel createEmbeddedRsrcPanel() {

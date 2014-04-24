@@ -15,6 +15,8 @@ import org.apache.jmeter.protocol.http.util.HTTPConstants;
 
 public class CDN {
 	CDNCache<String, CacheEntry> cache;
+	
+	private boolean useHttpCacheControl = true;
 
 	public static final long ONE_YEAR_MS = 365*24*60*60*1000L;
 	
@@ -26,6 +28,10 @@ public class CDN {
 	
 	private CDN() {
 		this.cache  = new CDNCache<String, CacheEntry>("CDN-Cache in memory", 2048);
+	}
+	
+	public void useHttpCacheControl(boolean use) {
+		this.useHttpCacheControl = use;
 	}
 	
 	public HTTPSampleResult get(String url) {
@@ -45,32 +51,22 @@ public class CDN {
 			this.cache.remove(url);
 			return null;
 		} else {
-			return entry.getResponse();
+			return new HTTPSampleResult();
 		}
 	}
 	
-	public void set(HTTPSampleResult response, String lastModified, String cacheControl, 
-			String expires, String etag, String url, String date) 
+	public void set(String lastModified, String cacheControl, 
+			String expires, String etag, String url, String date)
 	{
         Date expiresDate = null;
         boolean noCache = false;
         final String MAX_AGE = "max-age=";
         
-        /*************************HACKS************************/
-		Calendar cal = Calendar.getInstance();
-		cal.add(Calendar.DAY_OF_MONTH, +1);
-	    SimpleDateFormat dateFormat = new SimpleDateFormat(
-	            "EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
-	    dateFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
-		expires = dateFormat.format(cal.getTime());
-		cacheControl = null;
-		/*******************************************************/
-		
         if (cacheControl == null) {
         	System.out.println("No cache-control offered, use default settings.");
         } else {  
         	if (cacheControl.contains("no-store") || cacheControl.contains("private")) {
-	        	System.out.println("This record of key:" + url + " is not cacheable!");
+	        	System.out.println("According to Cache-Control, record of key:" + url + " is not cacheable!");
 	            return;
 	        }
 	        
@@ -112,7 +108,7 @@ public class CDN {
 	        }
         }
         System.out.println("Record of key:" + url + " is added to cdn.");
-		this.cache.put(url, new CacheEntry(response, lastModified, expiresDate, etag, noCache, cacheControl));
+		this.cache.put(url, new CacheEntry(lastModified, expiresDate, etag, noCache, cacheControl));
 	}
 
 	public boolean isCached(String url) {
@@ -125,11 +121,22 @@ public class CDN {
             String lastModified = conn.getHeaderField(HTTPConstants.LAST_MODIFIED);
             String expires      = conn.getHeaderField(HTTPConstants.EXPIRES);
             String etag         = conn.getHeaderField(HTTPConstants.ETAG);
-            String url          = conn.getURL().toString();
             String cacheControl = conn.getHeaderField(HTTPConstants.CACHE_CONTROL);
             String date         = conn.getHeaderField(HTTPConstants.DATE);
+            
+            /*************************HACKS************************/
+            if (!this.useHttpCacheControl) {
+	    		Calendar cal = Calendar.getInstance();
+	    		cal.add(Calendar.DAY_OF_MONTH, +1);
+	    	    SimpleDateFormat dateFormat = new SimpleDateFormat(
+	    	            "EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+	    	    dateFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
+	    		expires = dateFormat.format(cal.getTime());
+	    		cacheControl = null;
+            }
+    		/*******************************************************/
            
-            set(res, lastModified, cacheControl, expires, etag, url, date);
+            set(lastModified, cacheControl, expires, etag, res.getUrlAsString(), date);
         } else {
         	System.out.println("This response is not cacheable.");
         }
